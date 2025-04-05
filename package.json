@@ -1,6 +1,6 @@
 {
   "name": "use-ashared",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "a react use hook that adds localestorage and async + shared state",
   "main": "index.js",
   "type": "module",

@@ -24,7 +24,7 @@ export function useShared(key = "", defaultValue) {
     }, [key]);
 
     useEffect(() => {
-        bc.postMessage({
+        bcRef.current.postMessage({
             type: "get",
         });
     }, []);
