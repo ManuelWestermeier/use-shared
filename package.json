@@ -1,5 +1,5 @@
 {
-  "name": "use-shared",
+  "name": "use-ashared",
   "version": "1.0.0",
   "description": "a react use hook that adds localestorage and async + shared state",
   "main": "index.js",
@@ -12,6 +12,13 @@
     "shared",
     "localstorage"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ManuelWestermeier/use-shared.git"
+  },
   "author": "manuelwestermeier",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "react": "^19.1.0"
+  }
 }
