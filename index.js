@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 
-export const addLocalStorage = 0x2828;
-
 export function useShared(key = "", defaultValue) {
     const [data, setData] = useState(defaultValue);
     const bc = useRef();
@@ -31,7 +29,7 @@ export function useShared(key = "", defaultValue) {
     }];
 }
 
-export function effectShared(keys = [""], callback = () => undefined) {
+export function effectShared(callback = () => undefined, keys = [""]) {
     const bc = useRef();
 
     useEffect(() => {
