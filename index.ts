@@ -1,30 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 
-type UpdateFunction<T> = (prev: T) => T;
-type SetData<T> = T | UpdateFunction<T>;
-
-export function useShared<T>(key: string = "", defaultValue: T): [T, (newData: SetData<T>) => void] {
+// Generic type for shared state
+export function useShared<T>(key: string = "", defaultValue: T): [T, (newData: T | ((prev: T) => T)) => void] {
     const [data, setData] = useState<T>(defaultValue);
     const bcRef = useRef<BroadcastChannel | null>(null);
-    const dataRef = useRef<T>(data);
-
-    // Keep dataRef in sync with data state.
-    useEffect(() => {
-        dataRef.current = data;
-    }, [data]);
 
     useEffect(() => {
         const bc = new BroadcastChannel(key);
         bcRef.current = bc;
 
-        bc.onmessage = (event) => {
+        bc.onmessage = (event: MessageEvent) => {
             if (event.data.type === "set") {
-                setData(event.data.data);
+                setData(event.data.data as T);
             }
             if (event.data.type === "get") {
                 bc.postMessage({
                     type: "set",
-                    data: dataRef.current,
+                    data,
                 });
             }
         };
@@ -32,14 +24,13 @@ export function useShared<T>(key: string = "", defaultValue: T): [T, (newData: S
         return () => bc.close();
     }, [key]);
 
-    const updateData = (newData: SetData<T>): void => {
+    const updateData = (newData: T | ((prev: T) => T)) => {
         if (!bcRef.current) return;
 
         if (typeof newData === "function") {
-            setData((prev: T) => {
-                // Type assertion here is safe since we checked if newData is a function.
-                const computedData = (newData as UpdateFunction<T>)(prev);
-                bcRef.current!.postMessage({ type: "set", data: computedData });
+            setData((prev) => {
+                const computedData = (newData as (prev: T) => T)(prev);
+                bcRef.current?.postMessage({ type: "set", data: computedData });
                 return computedData;
             });
         } else {
