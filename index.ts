@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 
-export function useShared<T>(key: string = "", defaultValue: T): [T, (newData: T | ((prev: T) => T)) => void] {
+type MessageData<T> = {
+    type: "set" | "get";
+    data?: T;
+};
+
+export function useShared<T>(key: string = "", defaultValue: T): [
+    T,
+    (newData: T | ((prev: T) => T)) => void
+] {
     const [data, setData] = useState<T>(defaultValue);
     const bcRef = useRef<BroadcastChannel | null>(null);
 
@@ -8,14 +16,23 @@ export function useShared<T>(key: string = "", defaultValue: T): [T, (newData: T
         const bc = new BroadcastChannel(key);
         bcRef.current = bc;
 
-        bc.onmessage = (event: MessageEvent) => {
-            setData(event.data);
+        bc.onmessage = (event: MessageEvent<MessageData<T>>) => {
+            if (event.data.type === "set" && event.data.data !== undefined) {
+                setData(event.data.data);
+            }
+            if (event.data.type === "get") {
+                bc.postMessage({
+                    type: "set",
+                    data: data,
+                });
+            }
         };
 
         return () => {
             bc.close();
         };
-    }, [key]);
+        // Including "data" as a dependency ensures the latest value is broadcasted.
+    }, [key, data]);
 
     const updateData = (newData: T | ((prev: T) => T)) => {
         if (!bcRef.current) return;
@@ -23,11 +40,11 @@ export function useShared<T>(key: string = "", defaultValue: T): [T, (newData: T
         if (typeof newData === "function") {
             setData((prev) => {
                 const computedData = (newData as (prev: T) => T)(prev);
-                bcRef.current?.postMessage(computedData);
+                bcRef.current!.postMessage({ type: "set", data: computedData });
                 return computedData;
             });
         } else {
-            bcRef.current.postMessage(newData);
+            bcRef.current.postMessage({ type: "set", data: newData });
             setData(newData);
         }
     };
@@ -35,7 +52,10 @@ export function useShared<T>(key: string = "", defaultValue: T): [T, (newData: T
     return [data, updateData];
 }
 
-export function effectShared(callback: () => void = () => undefined, keys: string[] = [""]): void {
+export function effectShared(
+    callback: () => void = () => undefined,
+    keys: string[] = [""]
+): void {
     const channelsRef = useRef<BroadcastChannel[]>([]);
 
     useEffect(() => {

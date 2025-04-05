@@ -9,24 +9,29 @@ export function useShared(key = "", defaultValue) {
         bcRef.current = bc;
 
         bc.onmessage = (event) => {
-            setData(event.data);
+            if (event.data.type == "set")
+                setData(event.data.back);
+            if (event.data.type == "get")
+                bc.postMessage({
+                    type: "set",
+                    data: data,
+                });
         };
 
         return () => bc.close();
     }, [key]);
 
     const updateData = (newData) => {
-        // Check that the BroadcastChannel instance exists
         if (!bcRef.current) return;
 
         if (typeof newData === "function") {
             setData((prev) => {
                 const computedData = newData(prev);
-                bcRef.current.postMessage(computedData);
+                bcRef.current.postMessage({ type: "set", data: computedData });
                 return computedData;
             });
         } else {
-            bcRef.current.postMessage(newData);
+            bcRef.current.postMessage({ type: "set", data: newData });
             setData(newData);
         }
     };
@@ -38,7 +43,6 @@ export function effectShared(callback = () => undefined, keys = [""]) {
     const channelsRef = useRef([]);
 
     useEffect(() => {
-        // Create a BroadcastChannel for each key and set up the listener
         channelsRef.current = keys.map((key) => {
             const channel = new BroadcastChannel(key);
             channel.onmessage = () => {
@@ -48,7 +52,6 @@ export function effectShared(callback = () => undefined, keys = [""]) {
         });
 
         return () => {
-            // Clean up each channel when the effect is torn down
             channelsRef.current.forEach((channel) => channel.close());
         };
     }, [keys, callback]);
