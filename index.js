@@ -1,63 +1,75 @@
 import { useEffect, useRef, useState } from "react";
 
 export function useShared(key = "", defaultValue) {
-    const [data, setData] = useState(defaultValue);
     const hookId = useRef(window.crypto.randomUUID());
     const bcRef = useRef(null);
+    const hasSynced = useRef(false);
 
-    // Create the BroadcastChannel only once for the given key
+    const [data, setData] = useState(undefined); // Delay using defaultValue
+
     useEffect(() => {
         const bc = new BroadcastChannel(key);
         bcRef.current = bc;
 
         const handleMessage = (event) => {
             const message = event.data;
-
             if (message.sender === hookId.current) return;
 
             if (message.type === "set") {
-                setData(message.data);
+                if (!hasSynced.current) {
+                    hasSynced.current = true;
+                    setData(message.data);
+                }
             } else if (message.type === "get") {
-                // Respond with current state
-                bc.postMessage({
-                    type: "set",
-                    sender: hookId.current,
-                    data: data,
-                });
+                if (hasSynced.current && data !== undefined) {
+                    bc.postMessage({
+                        type: "set",
+                        sender: hookId.current,
+                        data,
+                    });
+                }
             }
         };
 
         bc.addEventListener("message", handleMessage);
 
-        // Request current state from other tabs
+        // Ask others for their data
         bc.postMessage({
             type: "get",
             sender: hookId.current,
         });
 
+        // Fallback to defaultValue if no response after 100ms
+        const timeout = setTimeout(() => {
+            if (!hasSynced.current) {
+                hasSynced.current = true;
+                setData(defaultValue);
+            }
+        }, 100);
+
         return () => {
+            clearTimeout(timeout);
             bc.removeEventListener("message", handleMessage);
             bc.close();
         };
-    }, [key]);
+    }, [key, defaultValue]);
 
     const updateData = (newData) => {
-        setData((prevData) => {
-            const value = typeof newData === "function" ? newData(prevData) : newData;
+        setData((prev) => {
+            const value = typeof newData === "function" ? newData(prev) : newData;
+            hasSynced.current = true;
 
-            if (bcRef.current) {
-                bcRef.current.postMessage({
-                    type: "set",
-                    sender: hookId.current,
-                    data: value,
-                });
-            }
+            bcRef.current?.postMessage({
+                type: "set",
+                sender: hookId.current,
+                data: value,
+            });
 
             return value;
         });
     };
 
-    return [data, updateData];
+    return [data === undefined ? defaultValue : data, updateData];
 }
 
 export function effectShared(callback = () => undefined, keys = [""]) {
@@ -66,9 +78,7 @@ export function effectShared(callback = () => undefined, keys = [""]) {
     useEffect(() => {
         const channels = keys.map((key) => {
             const channel = new BroadcastChannel(key);
-            channel.onmessage = (event) => {
-                if (typeof callback === "function") callback(event);
-            };
+            channel.onmessage = callback;
             return channel;
         });
 
