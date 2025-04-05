@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 export function useShared(key = "", defaultValue) {
     const [data, setData] = useState(defaultValue);
+    const hookId = useRef(window.crypto.randomUUID());
     const bcRef = useRef(null);
 
     useEffect(() => {
@@ -9,12 +10,14 @@ export function useShared(key = "", defaultValue) {
         bcRef.current = bc;
 
         bc.onmessage = (event) => {
+            if (event.data.sender == hookId) return;
             if (event.data.type === "set") {
                 setData(event.data.data);
             }
-            if (event.data.type === "get") {
+            else if (event.data.type === "get") {
                 bc.postMessage({
                     type: "set",
+                    sender: hookId,
                     data,
                 });
             }
@@ -26,6 +29,7 @@ export function useShared(key = "", defaultValue) {
     useEffect(() => {
         bcRef.current.postMessage({
             type: "get",
+            sender: hookId,
         });
     }, []);
 
@@ -35,11 +39,19 @@ export function useShared(key = "", defaultValue) {
         if (typeof newData === "function") {
             setData((prev) => {
                 const computedData = newData(prev);
-                bcRef.current.postMessage({ type: "set", data: computedData });
+                bcRef.current.postMessage({
+                    type: "set",
+                    sender: hookId,
+                    data: computedData
+                });
                 return computedData;
             });
         } else {
-            bcRef.current.postMessage({ type: "set", data: newData });
+            bcRef.current.postMessage({
+                type: "set",
+                sender: hookId,
+                data: newData
+            });
             setData(newData);
         }
     };

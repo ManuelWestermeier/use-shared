@@ -1,24 +1,32 @@
 import { useEffect, useRef, useState } from "react";
 
-// Hook for shared state using BroadcastChannel
+// Type for messages sent via BroadcastChannel
+type SharedMessage<T> =
+    | { type: "set"; data: T; sender: string }
+    | { type: "get"; sender: string };
+
+// useShared hook with sender isolation
 export function useShared<T>(
     key: string = "",
     defaultValue: T
 ): [T, (newData: T | ((prev: T) => T)) => void] {
     const [data, setData] = useState<T>(defaultValue);
+    const hookId = useRef<string>(crypto.randomUUID());
     const bcRef = useRef<BroadcastChannel | null>(null);
 
     useEffect(() => {
         const bc = new BroadcastChannel(key);
         bcRef.current = bc;
 
-        bc.onmessage = (event: MessageEvent) => {
+        bc.onmessage = (event: MessageEvent<SharedMessage<T>>) => {
+            if (event.data.sender === hookId.current) return;
+
             if (event.data.type === "set") {
-                setData(event.data.data as T);
-            }
-            if (event.data.type === "get") {
+                setData(event.data.data);
+            } else if (event.data.type === "get") {
                 bc.postMessage({
                     type: "set",
+                    sender: hookId.current,
                     data,
                 });
             }
@@ -28,9 +36,9 @@ export function useShared<T>(
     }, [key]);
 
     useEffect(() => {
-        // Request the current value from others
         bcRef.current?.postMessage({
             type: "get",
+            sender: hookId.current,
         });
     }, []);
 
@@ -40,11 +48,19 @@ export function useShared<T>(
         if (typeof newData === "function") {
             setData((prev) => {
                 const computedData = (newData as (prev: T) => T)(prev);
-                bcRef.current?.postMessage({ type: "set", data: computedData });
+                bcRef.current?.postMessage({
+                    type: "set",
+                    sender: hookId.current,
+                    data: computedData,
+                });
                 return computedData;
             });
         } else {
-            bcRef.current.postMessage({ type: "set", data: newData });
+            bcRef.current.postMessage({
+                type: "set",
+                sender: hookId.current,
+                data: newData,
+            });
             setData(newData);
         }
     };
@@ -52,7 +68,7 @@ export function useShared<T>(
     return [data, updateData];
 }
 
-// Hook for triggering effect when any of the channels receives a message
+// effectShared hook with proper typing
 export function effectShared(
     callback: () => void = () => undefined,
     keys: string[] = [""]
