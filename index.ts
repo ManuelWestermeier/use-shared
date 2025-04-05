@@ -1,28 +1,29 @@
 import { useEffect, useRef, useState } from "react";
 
-export function useShared(key = "", defaultValue) {
-    const [data, setData] = useState(defaultValue);
-    const bcRef = useRef(null);
+export function useShared<T>(key: string = "", defaultValue: T): [T, (newData: T | ((prev: T) => T)) => void] {
+    const [data, setData] = useState<T>(defaultValue);
+    const bcRef = useRef<BroadcastChannel | null>(null);
 
     useEffect(() => {
         const bc = new BroadcastChannel(key);
         bcRef.current = bc;
 
-        bc.onmessage = (event) => {
+        bc.onmessage = (event: MessageEvent) => {
             setData(event.data);
         };
 
-        return () => bc.close();
+        return () => {
+            bc.close();
+        };
     }, [key]);
 
-    const updateData = (newData) => {
-        // Check that the BroadcastChannel instance exists
+    const updateData = (newData: T | ((prev: T) => T)) => {
         if (!bcRef.current) return;
 
         if (typeof newData === "function") {
             setData((prev) => {
-                const computedData = newData(prev);
-                bcRef.current.postMessage(computedData);
+                const computedData = (newData as (prev: T) => T)(prev);
+                bcRef.current?.postMessage(computedData);
                 return computedData;
             });
         } else {
@@ -34,11 +35,10 @@ export function useShared(key = "", defaultValue) {
     return [data, updateData];
 }
 
-export function effectShared(callback = () => undefined, keys = [""]) {
-    const channelsRef = useRef([]);
+export function effectShared(callback: () => void = () => undefined, keys: string[] = [""]): void {
+    const channelsRef = useRef<BroadcastChannel[]>([]);
 
     useEffect(() => {
-        // Create a BroadcastChannel for each key and set up the listener
         channelsRef.current = keys.map((key) => {
             const channel = new BroadcastChannel(key);
             channel.onmessage = () => {
@@ -48,7 +48,6 @@ export function effectShared(callback = () => undefined, keys = [""]) {
         });
 
         return () => {
-            // Clean up each channel when the effect is torn down
             channelsRef.current.forEach((channel) => channel.close());
         };
     }, [keys, callback]);
