@@ -3,19 +3,27 @@ import { useEffect, useRef, useState } from "react";
 export function useShared(key = "", defaultValue) {
     const [data, setData] = useState(defaultValue);
     const bcRef = useRef(null);
+    const dataRef = useRef(data);
+
+    // Keep dataRef in sync with data state.
+    useEffect(() => {
+        dataRef.current = data;
+    }, [data]);
 
     useEffect(() => {
         const bc = new BroadcastChannel(key);
         bcRef.current = bc;
 
         bc.onmessage = (event) => {
-            if (event.data.type == "set")
-                setData(event.data.back);
-            if (event.data.type == "get")
+            if (event.data.type === "set") {
+                setData(event.data.data);
+            }
+            if (event.data.type === "get") {
                 bc.postMessage({
                     type: "set",
-                    data: data,
+                    data: dataRef.current,
                 });
+            }
         };
 
         return () => bc.close();
