@@ -1,0 +1,17 @@
+{
+  "name": "use-shared",
+  "version": "1.0.0",
+  "description": "a react use hook that adds localestorage and async + shared state",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "react",
+    "async",
+    "shared",
+    "localstorage"
+  ],
+  "author": "manuelwestermeier",
+  "license": "ISC"
+}
