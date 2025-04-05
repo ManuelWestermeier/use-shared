@@ -1,97 +1,95 @@
 import { useEffect, useRef, useState } from "react";
 
-// Define the shape of the messages exchanged
+// Message type for communication
 type SharedMessage<T> =
     | { type: "set"; sender: string; data: T }
     | { type: "get"; sender: string };
 
-// useShared hook to synchronize state across tabs/windows
+// useShared hook
 export function useShared<T>(
     key: string = "",
     defaultValue: T
 ): [T, (newData: T | ((prev: T) => T)) => void] {
     const [data, setData] = useState<T>(defaultValue);
-    const hookId = useRef<string>(crypto.randomUUID()); // Unique ID for this hook instance
-    const bcRef = useRef<BroadcastChannel | null>(null); // Broadcast channel reference
+    const hookId = useRef<string>(crypto.randomUUID());
+    const bcRef = useRef<BroadcastChannel | null>(null);
 
+    // Create the BroadcastChannel only once for the given key
     useEffect(() => {
-        // Create a BroadcastChannel for the given key.
         const bc = new BroadcastChannel(key);
         bcRef.current = bc;
 
-        // Listen for messages from other windows.
-        bc.onmessage = (event: MessageEvent<SharedMessage<T>>) => {
-            const msg = event.data;
-            if (msg.sender === hookId.current) return; // Ignore messages from self
+        const handleMessage = (event: MessageEvent<SharedMessage<T>>) => {
+            const message = event.data;
 
-            if (msg.type === "set") {
-                setData(msg.data); // Update local state
-            } else if (msg.type === "get") {
+            if (message.sender === hookId.current) return;
+
+            if (message.type === "set") {
+                setData(message.data);
+            } else if (message.type === "get") {
                 bc.postMessage({
                     type: "set",
                     sender: hookId.current,
-                    data,
+                    data: data,
                 });
             }
         };
 
-        // Ask for the shared data immediately
+        bc.addEventListener("message", handleMessage);
+
+        // Request current state from other tabs
         bc.postMessage({
             type: "get",
             sender: hookId.current,
         });
 
         return () => {
+            bc.removeEventListener("message", handleMessage);
             bc.close();
         };
-    }, [key, data]);
+    }, [key]);
 
-    // Function to update the shared state
     const updateData = (newData: T | ((prev: T) => T)) => {
-        if (!bcRef.current) return;
+        setData((prevData) => {
+            const value = typeof newData === "function"
+                ? (newData as (prev: T) => T)(prevData)
+                : newData;
 
-        if (typeof newData === "function") {
-            setData((prev) => {
-                const computedData = (newData as (prev: T) => T)(prev);
-                bcRef.current?.postMessage({
+            if (bcRef.current) {
+                bcRef.current.postMessage({
                     type: "set",
                     sender: hookId.current,
-                    data: computedData,
+                    data: value,
                 });
-                return computedData;
-            });
-        } else {
-            bcRef.current.postMessage({
-                type: "set",
-                sender: hookId.current,
-                data: newData,
-            });
-            setData(newData);
-        }
+            }
+
+            return value;
+        });
     };
 
     return [data, updateData];
 }
 
-// Hook that runs a callback whenever a message is received on any given key
+// effectShared hook
 export function effectShared(
-    callback: () => void = () => undefined,
+    callback: (event?: MessageEvent) => void = () => undefined,
     keys: string[] = [""]
 ): void {
     const channelsRef = useRef<BroadcastChannel[]>([]);
 
     useEffect(() => {
-        // Create a BroadcastChannel for each key.
-        channelsRef.current = keys.map((key) => {
+        const channels = keys.map((key) => {
             const channel = new BroadcastChannel(key);
-            channel.onmessage = () => {
-                callback(); // Run callback when message received
+            channel.onmessage = (event: MessageEvent) => {
+                callback(event);
             };
             return channel;
         });
 
+        channelsRef.current = channels;
+
         return () => {
-            channelsRef.current.forEach((channel) => channel.close());
+            channels.forEach((channel) => channel.close());
         };
-    }, [keys, callback]);
+    }, [JSON.stringify(keys), callback]);
 }

@@ -5,63 +5,56 @@ export function useShared(key = "", defaultValue) {
     const hookId = useRef(window.crypto.randomUUID());
     const bcRef = useRef(null);
 
+    // Create the BroadcastChannel only once for the given key
     useEffect(() => {
-        // Create a BroadcastChannel for the given key.
         const bc = new BroadcastChannel(key);
         bcRef.current = bc;
 
-        // Listen for messages from other windows.
-        bc.onmessage = (event) => {
-            // Ignore messages sent by this instance.
-            if (event.data.sender === hookId.current) return;
+        const handleMessage = (event) => {
+            const message = event.data;
 
-            if (event.data.type === "set") {
-                // When receiving a "set" message, update state.
-                setData(event.data.data);
-            } else if (event.data.type === "get") {
-                // When another window asks for data, respond with the current state.
+            if (message.sender === hookId.current) return;
+
+            if (message.type === "set") {
+                setData(message.data);
+            } else if (message.type === "get") {
+                // Respond with current state
                 bc.postMessage({
                     type: "set",
                     sender: hookId.current,
-                    data,
+                    data: data,
                 });
             }
         };
 
-        // Ask for the shared data as soon as the channel is ready.
+        bc.addEventListener("message", handleMessage);
+
+        // Request current state from other tabs
         bc.postMessage({
             type: "get",
             sender: hookId.current,
         });
 
         return () => {
+            bc.removeEventListener("message", handleMessage);
             bc.close();
         };
-    }, [key, data]);
+    }, [key]);
 
-    // Function to update the shared state.
     const updateData = (newData) => {
-        if (!bcRef.current) return;
+        setData((prevData) => {
+            const value = typeof newData === "function" ? newData(prevData) : newData;
 
-        // Handle functional updates.
-        if (typeof newData === "function") {
-            setData((prev) => {
-                const computedData = newData(prev);
+            if (bcRef.current) {
                 bcRef.current.postMessage({
                     type: "set",
                     sender: hookId.current,
-                    data: computedData,
+                    data: value,
                 });
-                return computedData;
-            });
-        } else {
-            bcRef.current.postMessage({
-                type: "set",
-                sender: hookId.current,
-                data: newData,
-            });
-            setData(newData);
-        }
+            }
+
+            return value;
+        });
     };
 
     return [data, updateData];
@@ -71,18 +64,18 @@ export function effectShared(callback = () => undefined, keys = [""]) {
     const channelsRef = useRef([]);
 
     useEffect(() => {
-        // Create a BroadcastChannel for each key.
-        channelsRef.current = keys.map((key) => {
+        const channels = keys.map((key) => {
             const channel = new BroadcastChannel(key);
-            channel.onmessage = () => {
-                // Run the callback when a message is received.
-                callback();
+            channel.onmessage = (event) => {
+                if (typeof callback === "function") callback(event);
             };
             return channel;
         });
 
+        channelsRef.current = channels;
+
         return () => {
-            channelsRef.current.forEach((channel) => channel.close());
+            channels.forEach((channel) => channel.close());
         };
-    }, [keys, callback]);
+    }, [JSON.stringify(keys), callback]);
 }
