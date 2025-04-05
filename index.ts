@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
-// Generic type for shared state
-export function useShared<T>(key: string = "", defaultValue: T): [T, (newData: T | ((prev: T) => T)) => void] {
+// Hook for shared state using BroadcastChannel
+export function useShared<T>(
+    key: string = "",
+    defaultValue: T
+): [T, (newData: T | ((prev: T) => T)) => void] {
     const [data, setData] = useState<T>(defaultValue);
     const bcRef = useRef<BroadcastChannel | null>(null);
 
@@ -24,6 +27,13 @@ export function useShared<T>(key: string = "", defaultValue: T): [T, (newData: T
         return () => bc.close();
     }, [key]);
 
+    useEffect(() => {
+        // Request the current value from others
+        bcRef.current?.postMessage({
+            type: "get",
+        });
+    }, []);
+
     const updateData = (newData: T | ((prev: T) => T)) => {
         if (!bcRef.current) return;
 
@@ -42,7 +52,11 @@ export function useShared<T>(key: string = "", defaultValue: T): [T, (newData: T
     return [data, updateData];
 }
 
-export function effectShared(callback: () => void = () => undefined, keys: string[] = [""]) {
+// Hook for triggering effect when any of the channels receives a message
+export function effectShared(
+    callback: () => void = () => undefined,
+    keys: string[] = [""]
+): void {
     const channelsRef = useRef<BroadcastChannel[]>([]);
 
     useEffect(() => {

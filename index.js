@@ -23,6 +23,12 @@ export function useShared(key = "", defaultValue) {
         return () => bc.close();
     }, [key]);
 
+    useEffect(() => {
+        bc.postMessage({
+            type: "get",
+        });
+    }, []);
+
     const updateData = (newData) => {
         if (!bcRef.current) return;
 
