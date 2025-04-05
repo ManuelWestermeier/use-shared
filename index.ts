@@ -1,29 +1,32 @@
 import { useEffect, useRef, useState } from "react";
 
-// Type for messages sent via BroadcastChannel
+// Define the shape of the messages exchanged
 type SharedMessage<T> =
-    | { type: "set"; data: T; sender: string }
+    | { type: "set"; sender: string; data: T }
     | { type: "get"; sender: string };
 
-// useShared hook with sender isolation
+// useShared hook to synchronize state across tabs/windows
 export function useShared<T>(
     key: string = "",
     defaultValue: T
 ): [T, (newData: T | ((prev: T) => T)) => void] {
     const [data, setData] = useState<T>(defaultValue);
-    const hookId = useRef<string>(crypto.randomUUID());
-    const bcRef = useRef<BroadcastChannel | null>(null);
+    const hookId = useRef<string>(crypto.randomUUID()); // Unique ID for this hook instance
+    const bcRef = useRef<BroadcastChannel | null>(null); // Broadcast channel reference
 
     useEffect(() => {
+        // Create a BroadcastChannel for the given key.
         const bc = new BroadcastChannel(key);
         bcRef.current = bc;
 
+        // Listen for messages from other windows.
         bc.onmessage = (event: MessageEvent<SharedMessage<T>>) => {
-            if (event.data.sender === hookId.current) return;
+            const msg = event.data;
+            if (msg.sender === hookId.current) return; // Ignore messages from self
 
-            if (event.data.type === "set") {
-                setData(event.data.data);
-            } else if (event.data.type === "get") {
+            if (msg.type === "set") {
+                setData(msg.data); // Update local state
+            } else if (msg.type === "get") {
                 bc.postMessage({
                     type: "set",
                     sender: hookId.current,
@@ -32,16 +35,18 @@ export function useShared<T>(
             }
         };
 
-        return () => bc.close();
-    }, [key]);
-
-    useEffect(() => {
-        bcRef.current?.postMessage({
+        // Ask for the shared data immediately
+        bc.postMessage({
             type: "get",
             sender: hookId.current,
         });
-    }, []);
 
+        return () => {
+            bc.close();
+        };
+    }, [key, data]);
+
+    // Function to update the shared state
     const updateData = (newData: T | ((prev: T) => T)) => {
         if (!bcRef.current) return;
 
@@ -68,7 +73,7 @@ export function useShared<T>(
     return [data, updateData];
 }
 
-// effectShared hook with proper typing
+// Hook that runs a callback whenever a message is received on any given key
 export function effectShared(
     callback: () => void = () => undefined,
     keys: string[] = [""]
@@ -76,10 +81,11 @@ export function effectShared(
     const channelsRef = useRef<BroadcastChannel[]>([]);
 
     useEffect(() => {
+        // Create a BroadcastChannel for each key.
         channelsRef.current = keys.map((key) => {
             const channel = new BroadcastChannel(key);
             channel.onmessage = () => {
-                callback();
+                callback(); // Run callback when message received
             };
             return channel;
         });

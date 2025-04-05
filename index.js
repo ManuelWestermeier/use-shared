@@ -6,51 +6,59 @@ export function useShared(key = "", defaultValue) {
     const bcRef = useRef(null);
 
     useEffect(() => {
+        // Create a BroadcastChannel for the given key.
         const bc = new BroadcastChannel(key);
         bcRef.current = bc;
 
+        // Listen for messages from other windows.
         bc.onmessage = (event) => {
-            if (event.data.sender == hookId) return;
+            // Ignore messages sent by this instance.
+            if (event.data.sender === hookId.current) return;
+
             if (event.data.type === "set") {
+                // When receiving a "set" message, update state.
                 setData(event.data.data);
-            }
-            else if (event.data.type === "get") {
+            } else if (event.data.type === "get") {
+                // When another window asks for data, respond with the current state.
                 bc.postMessage({
                     type: "set",
-                    sender: hookId,
+                    sender: hookId.current,
                     data,
                 });
             }
         };
 
-        return () => bc.close();
-    }, [key]);
-
-    useEffect(() => {
-        bcRef.current.postMessage({
+        // Ask for the shared data as soon as the channel is ready.
+        bc.postMessage({
             type: "get",
-            sender: hookId,
+            sender: hookId.current,
         });
-    }, []);
 
+        return () => {
+            bc.close();
+        };
+    }, [key, data]);
+
+    // Function to update the shared state.
     const updateData = (newData) => {
         if (!bcRef.current) return;
 
+        // Handle functional updates.
         if (typeof newData === "function") {
             setData((prev) => {
                 const computedData = newData(prev);
                 bcRef.current.postMessage({
                     type: "set",
-                    sender: hookId,
-                    data: computedData
+                    sender: hookId.current,
+                    data: computedData,
                 });
                 return computedData;
             });
         } else {
             bcRef.current.postMessage({
                 type: "set",
-                sender: hookId,
-                data: newData
+                sender: hookId.current,
+                data: newData,
             });
             setData(newData);
         }
@@ -63,9 +71,11 @@ export function effectShared(callback = () => undefined, keys = [""]) {
     const channelsRef = useRef([]);
 
     useEffect(() => {
+        // Create a BroadcastChannel for each key.
         channelsRef.current = keys.map((key) => {
             const channel = new BroadcastChannel(key);
             channel.onmessage = () => {
+                // Run the callback when a message is received.
                 callback();
             };
             return channel;

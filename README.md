@@ -1,4 +1,4 @@
-# USE ASCNY SHARED
+# Use Async Shared
 
 A simple React hook for sharing state across browser tabs using the BroadcastChannel API.
 
